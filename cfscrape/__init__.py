@@ -103,18 +103,18 @@ class CloudflareScraper(Session):
     @staticmethod
     def is_cloudflare_iuam_challenge(resp):
         return (
-            resp.status_code in (503, 429)
-            and resp.headers.get("Server", "").startswith("cloudflare")
-            and b"jschl_vc" in resp.content
-            and b"jschl_answer" in resp.content
+                resp.status_code in (503, 429)
+                and resp.headers.get("Server", "").startswith("cloudflare")
+                and b"jschl_vc" in resp.content
+                and b"jschl_answer" in resp.content
         )
 
     @staticmethod
     def is_cloudflare_captcha_challenge(resp):
         return (
-            resp.status_code == 403
-            and resp.headers.get("Server", "").startswith("cloudflare")
-            and b"/cdn-cgi/l/chk_captcha" in resp.content
+                resp.status_code == 403
+                and resp.headers.get("Server", "").startswith("cloudflare")
+                and b"/cdn-cgi/l/chk_captcha" in resp.content
         )
 
     def request(self, method, url, *args, **kwargs):
@@ -133,14 +133,14 @@ class CloudflareScraper(Session):
     def cloudflare_is_bypassed(self, url, resp=None):
         cookie_domain = ".{}".format(urlparse(url).netloc)
         return (
-            self.cookies.get("cf_clearance", None, domain=cookie_domain) or
-            (resp and resp.cookies.get("cf_clearance", None, domain=cookie_domain))
+                self.cookies.get("cf_clearance", None, domain=cookie_domain) or
+                (resp and resp.cookies.get("cf_clearance", None, domain=cookie_domain))
         )
 
     def handle_captcha_challenge(self, resp, url):
         error = (
-            "Cloudflare captcha challenge presented for %s (cfscrape cannot solve captchas)"
-            % urlparse(url).netloc
+                "Cloudflare captcha challenge presented for %s (cfscrape cannot solve captchas)"
+                % urlparse(url).netloc
         )
         if ssl.OPENSSL_VERSION_NUMBER < 0x10101000:
             error += ". Your OpenSSL version is lower than 1.1.1. Please upgrade your OpenSSL library and recompile Python."
@@ -153,12 +153,13 @@ class CloudflareScraper(Session):
         body = resp.text
         parsed_url = urlparse(resp.url)
         domain = parsed_url.netloc
-        challenge_form = re.search(r'\<form.*?id=\"challenge-form\".*?\/form\>',body, flags=re.S).group(0) # find challenge form
+        challenge_form = re.search(r'\<form.*?id=\"challenge-form\".*?\/form\>', body, flags=re.S).group(
+            0)  # find challenge form
         method = re.search(r'method=\"(.*?)\"', challenge_form, flags=re.S).group(1)
         if self.org_method is None:
             self.org_method = resp.request.method
         submit_url = "%s://%s%s" % (parsed_url.scheme,
-                                     domain,
+                                    domain,
                                     re.search(r'action=\"(.*?)\"', challenge_form, flags=re.S).group(1).split('?')[0])
 
         cloudflare_kwargs = copy.deepcopy(original_kwargs)
@@ -170,17 +171,20 @@ class CloudflareScraper(Session):
             cloudflare_kwargs["params"] = dict()
             cloudflare_kwargs["data"] = dict()
             if len(re.search(r'action=\"(.*?)\"', challenge_form, flags=re.S).group(1).split('?')) != 1:
-                for param in re.search(r'action=\"(.*?)\"', challenge_form, flags=re.S).group(1).split('?')[1].split('&'):
-                    cloudflare_kwargs["params"].update({param.split('=')[0]:param.split('=')[1]})
+                for param in re.search(r'action=\"(.*?)\"', challenge_form, flags=re.S).group(1).split('?')[1].split(
+                        '&'):
+                    cloudflare_kwargs["params"].update({param.split('=')[0]: param.split('=')[1]})
 
             for input_ in re.findall(r'\<input.*?(?:\/>|\<\/input\>)', challenge_form, flags=re.S):
-                if re.search(r'name=\"(.*?)\"',input_, flags=re.S).group(1) != 'jschl_answer':
+                if re.search(r'name=\"(.*?)\"', input_, flags=re.S).group(1) != 'jschl_answer':
                     if method == 'POST':
-                        cloudflare_kwargs["data"].update({re.search(r'name=\"(.*?)\"',input_, flags=re.S).group(1):
-                                                          re.search(r'value=\"(.*?)\"',input_, flags=re.S).group(1)})
+                        cloudflare_kwargs["data"].update({re.search(r'name=\"(.*?)\"', input_, flags=re.S).group(1):
+                            re.search(r'value=\"(.*?)\"', input_, flags=re.S).group(
+                                1)})
                     elif method == 'GET':
-                        cloudflare_kwargs["params"].update({re.search(r'name=\"(.*?)\"',input_, flags=re.S).group(1):
-                                                          re.search(r'value=\"(.*?)\"',input_, flags=re.S).group(1)})
+                        cloudflare_kwargs["params"].update({re.search(r'name=\"(.*?)\"', input_, flags=re.S).group(1):
+                            re.search(r'value=\"(.*?)\"', input_, flags=re.S).group(
+                                1)})
             if method == 'POST':
                 for k in ("jschl_vc", "pass"):
                     if k not in cloudflare_kwargs["data"]:
@@ -235,7 +239,7 @@ class CloudflareScraper(Session):
             return self.request(method, redirect.headers["Location"], **original_kwargs)
         elif "Set-Cookie" in redirect.headers:
             if 'cf_clearance' in redirect.headers['Set-Cookie']:
-                resp = self.request(self.org_method, submit_url, cookies = redirect.cookies)
+                resp = self.request(self.org_method, submit_url, cookies=redirect.cookies)
                 return resp
             else:
                 return self.request(method, submit_url, **original_kwargs)
@@ -243,14 +247,17 @@ class CloudflareScraper(Session):
             resp = self.request(self.org_method, submit_url, **cloudflare_kwargs)
             return resp
 
-
     def solve_challenge(self, body, domain):
         try:
-            all_scripts = re.findall(r'\<script type\=\"text\/javascript\"\>\n(.*?)\<\/script\>',body, flags=re.S)
-            javascript = next(filter(lambda w: "jschl-answer" in w,all_scripts)) #find the script tag which would have obfuscated js
+            all_scripts = re.findall(r'\<script type\=\"text\/javascript\"\>\n(.*?)\<\/script\>', body, flags=re.S)
+            # print(next(filter(lambda w: "jschl+answer" in w,
+            #                          all_scripts)))
+            # exit()
+            javascript = next(iter(filter(lambda w: "jschl+answer" in w,
+                                          all_scripts)))  # find the script tag which would have obfuscated js
             challenge, ms = re.search(
                 r"setTimeout\(function\(\){\s*(var "
-                r"s,t,o,p,b,r,e,a,k,i,n,g,f.+?\r?\n[\s\S]+?a\.value\s*=.+?)\r?\n"
+                r"[stopbreakingf, ]+(?=,).+?\r?\n[\s\S]+?a\.value\s*=.+?)\r?\n"
                 r"(?:[^{<>]*},\s*(\d{4,}))?",
                 javascript, flags=re.S
             ).groups()
@@ -259,9 +266,10 @@ class CloudflareScraper(Session):
             # Future proofing would require escaping newlines and double quotes
             innerHTML = ''
             for i in javascript.split(';'):
-                if i.strip().split('=')[0].strip() == 'k':      # from what i found out from pld example K var in
-                    k = i.strip().split('=')[1].strip(' \'')    #  javafunction is for innerHTML this code to find it
-                    innerHTML = re.search(r'\<div.*?id\=\"'+k+r'\".*?\>(.*?)\<\/div\>',body).group(1) #find innerHTML
+                if i.strip().split('=')[0].strip() == 'k':  # from what i found out from pld example K var in
+                    k = i.strip().split('=')[1].strip(' \'')  # javafunction is for innerHTML this code to find it
+                    innerHTML = re.search(r'\<div.*?id\=\"' + k + r'\".*?\>(.*?)\<\/div\>', body).group(
+                        1)  # find innerHTML
 
             # Prefix the challenge with a fake document object.
             # Interpolate the domain, div contents, and JS challenge.
@@ -286,7 +294,8 @@ class CloudflareScraper(Session):
             challenge = b64encode(challenge.encode("utf-8")).decode("ascii")
             # Use the provided delay, parsed delay, or default to 8 secs
             delay = self.delay or (float(ms) / float(1000) if ms else 8)
-        except Exception:
+        except ValueError as e:
+            print(e.message, e)
             raise ValueError(
                 "Unable to identify Cloudflare IUAM Javascript on website. %s"
                 % BUG_REPORT
@@ -295,25 +304,25 @@ class CloudflareScraper(Session):
         # Use vm.runInNewContext to safely evaluate code
         # The sandboxed code cannot use the Node.js standard library
         js = (
-            """\
-            var atob = Object.setPrototypeOf(function (str) {\
-                try {\
-                    return Buffer.from("" + str, "base64").toString("binary");\
-                } catch (e) {}\
-            }, null);\
-            var challenge = atob("%s");\
-            var context = Object.setPrototypeOf({ atob: atob }, null);\
-            var options = {\
-                filename: "iuam-challenge.js",\
-                contextOrigin: "cloudflare:iuam-challenge.js",\
-                contextCodeGeneration: { strings: true, wasm: false },\
-                timeout: 5000\
-            };\
-            process.stdout.write(String(\
-                require("vm").runInNewContext(challenge, context, options)\
-            ));\
-        """
-            % challenge
+                """\
+                var atob = Object.setPrototypeOf(function (str) {\
+                    try {\
+                        return Buffer.from("" + str, "base64").toString("binary");\
+                    } catch (e) {}\
+                }, null);\
+                var challenge = atob("%s");\
+                var context = Object.setPrototypeOf({ atob: atob }, null);\
+                var options = {\
+                    filename: "iuam-challenge.js",\
+                    contextOrigin: "cloudflare:iuam-challenge.js",\
+                    contextCodeGeneration: { strings: true, wasm: false },\
+                    timeout: 5000\
+                };\
+                process.stdout.write(String(\
+                    require("vm").runInNewContext(challenge, context, options)\
+                ));\
+            """
+                % challenge
         )
         stderr = ''
 
@@ -321,7 +330,7 @@ class CloudflareScraper(Session):
             node = subprocess.Popen(
                 ["node", "-e", js], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True
-                )
+            )
             result, stderr = node.communicate()
             if node.returncode != 0:
                 stderr = "Node.js Exception:\n%s" % (stderr or None)
