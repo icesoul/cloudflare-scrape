@@ -3,6 +3,7 @@
 import logging
 import random
 import re
+import json
 import ssl
 import subprocess
 import copy
@@ -119,7 +120,6 @@ class CloudflareScraper(Session):
 
     def request(self, method, url, *args, **kwargs):
         resp = super(CloudflareScraper, self).request(method, url, *args, **kwargs)
-
         # Check if Cloudflare captcha challenge is presented
         if self.is_cloudflare_captcha_challenge(resp):
             self.handle_captcha_challenge(resp, url)
@@ -174,8 +174,8 @@ class CloudflareScraper(Session):
                 for param in re.search(r'action=\"(.*?)\"', challenge_form, flags=re.S).group(1).split('?')[1].split(
                         '&'):
                     cloudflare_kwargs["params"].update({param.split('=')[0]: param.split('=')[1]})
-
-            for input_ in re.findall(r'\<input.*?(?:\/>|\<\/input\>)', challenge_form, flags=re.S):
+            # (?<!-- ) - exclude commentaries
+            for input_ in re.findall(r'(?<!-- )\<input.*?(?:\/>|\<\/input\>)', challenge_form, flags=re.S):
                 if re.search(r'name=\"(.*?)\"', input_, flags=re.S).group(1) != 'jschl_answer':
                     if method == 'POST':
                         cloudflare_kwargs["data"].update({re.search(r'name=\"(.*?)\"', input_, flags=re.S).group(1):
@@ -250,9 +250,6 @@ class CloudflareScraper(Session):
     def solve_challenge(self, body, domain):
         try:
             all_scripts = re.findall(r'\<script type\=\"text\/javascript\"\>\n(.*?)\<\/script\>', body, flags=re.S)
-            # print(next(filter(lambda w: "jschl+answer" in w,
-            #                          all_scripts)))
-            # exit()
             javascript = next(iter(filter(lambda w: "jschl+answer" in w,
                                           all_scripts)))  # find the script tag which would have obfuscated js
             challenge, ms = re.search(
@@ -264,30 +261,34 @@ class CloudflareScraper(Session):
 
             # The challenge requires `document.getElementById` to get this content.
             # Future proofing would require escaping newlines and double quotes
-            innerHTML = ''
+            allHtmls = {}
             for i in javascript.split(';'):
                 if i.strip().split('=')[0].strip() == 'k':  # from what i found out from pld example K var in
+
                     k = i.strip().split('=')[1].strip(' \'')  # javafunction is for innerHTML this code to find it
-                    innerHTML = re.search(r'\<div.*?id\=\"' + k + r'\".*?\>(.*?)\<\/div\>', body).group(
-                        1)  # find innerHTML
+                    for part in re.finditer(r'\<div.*?id\=\"' + k + r'(\d+)\".*?\>(.*?)\<\/div\>', body):
+                        allHtmls[k + part.group(1)] = part.group(2)
 
             # Prefix the challenge with a fake document object.
             # Interpolate the domain, div contents, and JS challenge.
             # The `a.value` to be returned is tacked onto the end.
             challenge = """
+                var html = %s;
                 var document = {
-                    createElement: function () {
+                    createElement: function (s) {
+                    
                       return { firstChild: { href: "http://%s/" } }
                     },
-                    getElementById: function () {
-                      return {"innerHTML": "%s"};
+                    getElementById: function (kekid) {
+                        
+                      return {"innerHTML": html[kekid]};
                     }
                   };
 
                 %s; a.value
             """ % (
+                json.dumps(allHtmls),
                 domain,
-                innerHTML,
                 challenge,
             )
             # Encode the challenge for security while preserving quotes and spacing.
